@@ -7,6 +7,7 @@ from fastapi import (
 )
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.core.rate_limit import check_rate_limit as rate_limit_check, get_user_rate_limit
 from app.models import User, Image, ImageStatus
 from app.images.schemas import ImageUploadResponse, ImageStatusResponse
 from app.images.utils import (
@@ -19,6 +20,41 @@ from app.images.utils import (
 from app.auth.routes import get_current_user_from_header
 
 router = APIRouter(prefix="/images", tags=["images"])
+
+
+def check_rate_limit(user_id: str, user_tier, action: str, db: Session):
+    """Check rate limit for user action and raise 429 if exceeded."""
+    limit, period = get_user_rate_limit(user_tier, action)
+
+    if limit == float("inf"):
+        return
+
+    from app.core.rate_limit import usage_cache, lock, _get_cache_key, _get_reset_time
+    from datetime import datetime, timedelta
+
+    cache_key = _get_cache_key(user_id, action, period)
+
+    with lock:
+        now = datetime.utcnow()
+        reset_time = _get_reset_time(period)
+
+        if cache_key not in usage_cache:
+            usage_cache[cache_key] = {"count": 0, "reset_at": reset_time}
+
+        record = usage_cache[cache_key]
+
+        if now >= record["reset_at"]:
+            record["count"] = 0
+            record["reset_at"] = _get_reset_time(period)
+
+        if record["count"] >= limit:
+            reset_str = record["reset_at"].isoformat()
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Rate limit exceeded for {action}. Resets at {reset_str}"
+            )
+
+        record["count"] += 1
 
 
 def process_image_background(image_id: str, user_id: str, input_path: str, db_session):
@@ -98,6 +134,9 @@ async def upload_image(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+
+    # Check rate limit before reading file
+    check_rate_limit(user_id, user.tier, "upload", db)
 
     # Read file
     file_bytes = await file.read()
@@ -227,6 +266,12 @@ def download_image(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
 
     user_id: str = payload.get("sub")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+
+    # Check rate limit for download
+    check_rate_limit(user_id, user.tier, "download", db)
 
     image = db.query(Image).filter(
         Image.id == image_id,
