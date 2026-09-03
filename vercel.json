@@ -1,0 +1,15 @@
+{
+  "buildCommand": "npm install",
+  "outputDirectory": "frontend",
+  "installCommand": "npm install",
+  "env": {
+    "VITE_API_URL": "https://chaufondo-api.up.railway.app",
+    "VITE_ENVIRONMENT": "production"
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/frontend/index.html"
+    }
+  ]
+}
