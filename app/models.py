@@ -64,6 +64,8 @@ class Payment(Base):
     amount = Column(Float, nullable=False)
     status = Column(SQLEnum(PaymentStatus), default=PaymentStatus.PENDING, nullable=False)
     mercado_pago_id = Column(String(255), nullable=True, unique=True)
+    plan = Column(String(50), nullable=True)
+    paid_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
