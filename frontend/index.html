@@ -193,7 +193,7 @@
               <strong id="uploadCount">0</strong> / <strong id="uploadLimit">50</strong> usos diarios
             </div>
           </div>
-          <button class="btn-primary" data-anon-only id="upgradeBtn" onclick="ui.showPaymentModal()" style="display: none;">Upgrade a Premium</button>
+          <button class="btn-primary" id="upgradeBtn" onclick="ui.showPaymentModal()" style="display: none;">Upgrade a Premium</button>
         </div>
       </div>
     </div>
@@ -244,6 +244,9 @@
         </p>
       </div>
     </div>
+
+    <!-- Dashboard upload file input -->
+    <input type="file" id="dashboardFileInput" accept="image/jpeg,image/png,image/webp" style="display: none;">
 
     <!-- FOOTER -->
     <footer>
