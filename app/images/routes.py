@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.auth.utils import decode_token
+from app.core.rate_limit_v2 import check_rate_limit, clear_client_cache
 from app.models import User, Image, ImageStatus
 from app.images.processor import (
     process_image_sync,
@@ -77,6 +78,14 @@ async def upload_image(
     current_user = get_current_user_optional(authorization, db) if authorization else None
     user_id = current_user.id if current_user else None
     client_ip = request.client.host if request else "unknown"
+
+    # Check rate limit based on client type
+    client_id = user_id if user_id else client_ip  # Use user_id if auth, IP if anonymous
+    user_tier = current_user.tier if current_user else None  # None for anonymous
+    allowed, error_msg = check_rate_limit(client_id, user_tier)
+
+    if not allowed:
+        raise HTTPException(status_code=429, detail=error_msg)
 
     # For now, process synchronously for simplicity
     # Read file into memory
