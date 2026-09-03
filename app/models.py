@@ -33,6 +33,8 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     tier = Column(SQLEnum(UserTier), default=UserTier.FREE, nullable=False)
     tier_expires_at = Column(DateTime, nullable=True)
+    premium_expires_at = Column(DateTime, nullable=True)
+    last_login_ip = Column(String(45), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -44,7 +46,9 @@ class Image(Base):
     __tablename__ = "images"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    ip_address = Column(String(45), nullable=True)
+    is_anonymous = Column(Integer, default=0, nullable=False)
     original_path = Column(String(500), nullable=False)
     result_path = Column(String(500), nullable=True)
     status = Column(SQLEnum(ImageStatus), default=ImageStatus.QUEUED, nullable=False)

@@ -1,30 +1,22 @@
 import json
 import uuid
 from datetime import datetime, timedelta
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Header, Request
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.rate_limit import clear_user_cache
-from app.models import User, Payment, PaymentStatus, UserTier, Image
-from app.payments.schemas import (
-    CreatePaymentRequest,
-    PaymentResponse,
-    PaymentStatusResponse,
-    WebhookPayload,
-)
-from app.payments.utils import (
-    MercadoPagoClient,
-    get_mercado_pago_amount,
-    get_plan_duration_days,
-)
 from app.auth.utils import decode_token
+from app.core.rate_limit_v2 import clear_client_cache
+from app.models import User, Payment, PaymentStatus, UserTier
+from app.payments.schemas import CreateSubscriptionRequest, PaymentResponse
+from app.payments.utils import MercadoPagoClient, get_mercado_pago_amount, get_plan_duration_days
 from app.core.config import settings
 
-router = APIRouter(prefix="/payments", tags=["payments"])
+router = APIRouter(prefix="/payment", tags=["payment"])
 
 
-def get_current_user_from_header(authorization: str, db: Session) -> User:
-    """Extract user from Bearer token."""
+def get_current_user_from_header(authorization: Optional[str], db: Session) -> User:
+    """Extract user from Bearer token (REQUIRED)."""
     if not authorization:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -50,21 +42,27 @@ def get_current_user_from_header(authorization: str, db: Session) -> User:
     return user
 
 
-@router.post("/create", response_model=PaymentResponse, status_code=201)
-async def create_payment(
-    request: CreatePaymentRequest,
-    authorization: str = Header(None),
+@router.post("/create-subscription", response_model=PaymentResponse, status_code=201)
+async def create_subscription(
+    request: CreateSubscriptionRequest,
+    authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db),
 ):
     """
-    Create a payment preference in Mercado Pago.
+    Create premium subscription (PROTECTED - authenticated users only).
 
-    - **plan**: "premium_month" or "premium_year"
-
-    Returns: payment_id, checkout_url, status, expires_at
+    Only free users can upgrade to premium.
+    Returns: payment_url for Mercado Pago checkout
     """
-    # Authenticate user
+    # Authenticate user (REQUIRED)
     user = get_current_user_from_header(authorization, db)
+
+    # Only free tier users can upgrade
+    if user.tier != UserTier.FREE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User must be free tier to upgrade",
+        )
 
     # Validate plan
     valid_plans = ["premium_month", "premium_year"]
@@ -74,12 +72,10 @@ async def create_payment(
             detail=f"Invalid plan. Must be one of: {', '.join(valid_plans)}",
         )
 
-    # Get plan details
-    amount = get_mercado_pago_amount(request.plan)
-
     # Create Mercado Pago preference
     mp_client = MercadoPagoClient()
     try:
+        amount = get_mercado_pago_amount(request.plan)
         mp_response = mp_client.create_preference(
             user_id=user.id,
             user_email=user.email,
@@ -89,7 +85,7 @@ async def create_payment(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create payment preference: {str(e)}",
+            detail=f"Failed to create payment: {str(e)}",
         )
 
     # Create payment record in database
@@ -110,175 +106,93 @@ async def create_payment(
 
     return {
         "payment_id": payment_id,
-        "checkout_url": checkout_url,
-        "status": "pending",
-        "expires_at": (datetime.utcnow() + timedelta(hours=24)).isoformat() + "Z",
+        "payment_url": checkout_url,
     }
 
 
-@router.get("/{payment_id}/status", response_model=PaymentStatusResponse)
-def get_payment_status(
-    payment_id: str,
-    authorization: str = Header(None),
-    db: Session = Depends(get_db),
-):
-    """
-    Get payment status.
-
-    Returns: payment_id, status, amount, plan, created_at, paid_at, tier_expires_at
-    """
-    # Authenticate user
-    user = get_current_user_from_header(authorization, db)
-
-    # Get payment
-    payment = db.query(Payment).filter(
-        Payment.id == payment_id,
-        Payment.user_id == user.id
-    ).first()
-
-    if not payment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Payment not found",
-        )
-
-    return {
-        "payment_id": payment.id,
-        "status": payment.status.value,
-        "amount": payment.amount,
-        "plan": payment.plan,
-        "created_at": payment.created_at.isoformat() + "Z",
-        "paid_at": payment.paid_at.isoformat() + "Z" if payment.paid_at else None,
-        "tier_expires_at": user.tier_expires_at.isoformat() + "Z" if user.tier_expires_at else None,
-    }
-
-
-@router.post("/webhook")
+@router.post("/webhook/mercadopago", status_code=200)
 async def handle_webhook(
     request: Request,
     db: Session = Depends(get_db),
 ):
     """
-    Handle Mercado Pago webhooks.
+    Handle Mercado Pago webhook notifications (PUBLIC).
 
-    Mercado Pago sends notifications about payment status changes.
-    Verifies X-Signature header for authenticity.
+    Verifies signature and processes payment status updates.
     """
     try:
         payload_str = await request.body()
         payload_str = payload_str.decode('utf-8')
         body = json.loads(payload_str)
     except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid JSON payload",
-        )
+        return {"status": "ok"}
 
     # Verify webhook signature
     signature = request.headers.get("X-Signature", "")
     mp_client = MercadoPagoClient()
     if not mp_client.verify_webhook_signature(payload_str, signature):
-        # Log suspicious activity but still acknowledge (don't reveal signature validation)
+        # Invalid signature - silently accept but don't process
         return {"status": "ok"}
 
-    # Handle different webhook types
-    action = body.get("action")
+    # Handle payment webhooks
     webhook_type = body.get("type")
+    if webhook_type != "payment":
+        return {"status": "ok"}
 
-    # We're interested in payment.updated events
-    if webhook_type == "payment":
-        payment_id = body.get("data", {}).get("id")
+    payment_id = body.get("data", {}).get("id")
+    if not payment_id:
+        return {"status": "ok"}
 
-        if not payment_id:
-            return {"status": "ok"}
+    # Get payment status from Mercado Pago
+    try:
+        mp_payment = mp_client.get_payment(payment_id)
+    except Exception:
+        return {"status": "ok"}
 
-        # Get payment from Mercado Pago API to verify status
-        mp_client = MercadoPagoClient()
-        try:
-            mp_payment = mp_client.get_payment(payment_id)
-        except Exception:
-            # Even if we can't verify, acknowledge webhook
-            return {"status": "ok"}
+    mp_status = mp_payment.get("status")
+    external_reference = mp_payment.get("external_reference")
 
-        mp_status = mp_payment.get("status")
-        external_reference = mp_payment.get("external_reference")
+    if not external_reference:
+        return {"status": "ok"}
 
-        if not external_reference:
-            return {"status": "ok"}
+    # Find user and payment in database
+    user = db.query(User).filter(User.id == external_reference).first()
+    if not user:
+        return {"status": "ok"}
 
-        # Find payment in our database using external_reference (user_id)
-        user = db.query(User).filter(User.id == external_reference).first()
-        if not user:
-            return {"status": "ok"}
+    payment = db.query(Payment).filter(
+        Payment.mercado_pago_id == payment_id
+    ).first()
 
-        payment = db.query(Payment).filter(
-            Payment.mercado_pago_id == payment_id
-        ).first()
+    if not payment:
+        return {"status": "ok"}
 
-        if not payment:
-            return {"status": "ok"}
+    # Update payment status based on Mercado Pago status
+    if mp_status == "approved":
+        # Only process if not already approved (idempotency)
+        if payment.status != PaymentStatus.APPROVED:
+            payment.status = PaymentStatus.APPROVED
+            payment.paid_at = datetime.utcnow()
 
-        # Update payment status based on Mercado Pago status
-        if mp_status == "approved":
-            # Only process if payment is transitioning to approved (idempotency)
-            if payment.status != PaymentStatus.APPROVED:
-                payment.status = PaymentStatus.APPROVED
-                payment.paid_at = datetime.utcnow()
+            # Upgrade user tier
+            duration_days = get_plan_duration_days(payment.plan)
+            user.tier = UserTier.PREMIUM
+            user.tier_expires_at = datetime.utcnow() + timedelta(days=duration_days)
+            user.premium_expires_at = datetime.utcnow() + timedelta(days=duration_days)
 
-                # Upgrade user tier
-                duration_days = get_plan_duration_days(payment.plan)
-                user.tier = UserTier.PREMIUM
-                user.tier_expires_at = datetime.utcnow() + timedelta(days=duration_days)
-
-                # Clear rate limit cache for user
-                clear_user_cache(user.id)
+            # Clear rate limit cache for user (new limits apply)
+            clear_client_cache(user.id)
 
             db.commit()
 
-        elif mp_status == "rejected":
+    elif mp_status == "rejected":
+        if payment.status != PaymentStatus.REJECTED:
             payment.status = PaymentStatus.REJECTED
             db.commit()
 
-        elif mp_status == "pending":
+    elif mp_status == "pending":
+        if payment.status != PaymentStatus.PENDING:
             payment.status = PaymentStatus.PENDING
             db.commit()
 
     return {"status": "ok"}
-
-
-@router.delete("/{payment_id}")
-def cancel_payment(
-    payment_id: str,
-    authorization: str = Header(None),
-    db: Session = Depends(get_db),
-):
-    """
-    Cancel a pending payment.
-
-    Only pending payments can be cancelled.
-    """
-    # Authenticate user
-    user = get_current_user_from_header(authorization, db)
-
-    # Get payment
-    payment = db.query(Payment).filter(
-        Payment.id == payment_id,
-        Payment.user_id == user.id
-    ).first()
-
-    if not payment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Payment not found",
-        )
-
-    if payment.status != PaymentStatus.PENDING:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot cancel payment with status: {payment.status.value}",
-        )
-
-    payment.status = PaymentStatus.CANCELLED
-    db.commit()
-
-    return {"status": "cancelled"}
