@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     REMBG_MODEL: str = "u2net"
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:8080"
     LOG_LEVEL: str = "INFO"
+    FREE_TIER_UPLOADS_PER_DAY: int = 5
+    FREE_TIER_DOWNLOADS_PER_DAY: int = 5
+    PREMIUM_TIER_UPLOADS_PER_MONTH: int = 100
+    REDIS_URL: str = "redis://localhost:6379"
+    USE_REDIS: bool = False
+    API_BASE_URL: str = "http://localhost:8000"
+    FRONTEND_URL: str = "http://localhost:3000"
 
     class Config:
         env_file = ".env"
