@@ -3,10 +3,20 @@
 class APIClient {
   constructor() {
     this.baseUrl = CONFIG.API_URL;
+    this.timeout = 30000; // 30 seconds
+    this.retries = 3;
+    this.retryDelay = 1000;
   }
 
-  // Helper: Make HTTP request
-  async request(endpoint, options = {}) {
+  // Log API calls (for debugging)
+  log(method, endpoint, status, message) {
+    if (CONFIG.API_DEBUG) {
+      console.log(`[API] ${method} ${endpoint} - ${status} ${message}`);
+    }
+  }
+
+  // Helper: Make HTTP request with retry logic
+  async request(endpoint, options = {}, retryCount = 0) {
     const url = `${this.baseUrl}${endpoint}`;
     const headers = {
       ...options.headers,
@@ -14,13 +24,23 @@ class APIClient {
     };
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
       const response = await fetch(url, {
         ...options,
-        headers
+        headers,
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       // Handle non-JSON responses (like PNG)
       if (response.headers.get('content-type')?.includes('image')) {
+        if (!response.ok) {
+          throw new APIError(response.status, 'Fallo al procesar imagen');
+        }
+        this.log(options.method || 'GET', endpoint, response.status, 'OK');
         return {
           ok: response.ok,
           status: response.status,
@@ -28,11 +48,22 @@ class APIClient {
         };
       }
 
-      const data = await response.json();
+      // Try to parse JSON
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        data = { detail: 'Invalid response from server' };
+      }
 
       if (!response.ok) {
-        throw new APIError(response.status, data.detail || 'API Error');
+        const errorMsg = typeof data?.detail === 'string'
+          ? data.detail
+          : data?.message || 'API Error';
+        throw new APIError(response.status, errorMsg);
       }
+
+      this.log(options.method || 'GET', endpoint, response.status, 'OK');
 
       return {
         ok: response.ok,
@@ -40,8 +71,35 @@ class APIClient {
         data
       };
     } catch (error) {
-      if (error instanceof APIError) throw error;
+      if (error instanceof APIError) {
+        this.log(options.method || 'GET', endpoint, error.status, error.message);
+        throw error;
+      }
+
+      // Network error or timeout
+      if (error.name === 'AbortError') {
+        throw new APIError(0, 'Request timeout - El servidor no responde');
+      }
+
+      if (error instanceof TypeError) {
+        throw new APIError(0, 'Error de conexión - Verifica tu internet');
+      }
+
+      this.log(options.method || 'GET', endpoint, 'ERROR', error.message);
       throw new APIError(0, error.message);
+    }
+  }
+
+  // Validate API is reachable
+  async validateConnection() {
+    try {
+      await this.healthCheck();
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        error: `No se puede conectar a ${this.baseUrl}: ${error.message}`
+      };
     }
   }
 
@@ -79,7 +137,6 @@ class APIClient {
     const response = await this.request('/images/upload', {
       method: 'POST',
       body: formData
-      // Don't set Content-Type header - browser will set it with boundary
     });
 
     return response;
@@ -131,6 +188,22 @@ class APIError extends Error {
     super(message);
     this.status = status;
     this.name = 'APIError';
+  }
+
+  get isNetworkError() {
+    return this.status === 0;
+  }
+
+  get isAuthError() {
+    return this.status === 401;
+  }
+
+  get isNotFoundError() {
+    return this.status === 404;
+  }
+
+  get isServerError() {
+    return this.status >= 500;
   }
 }
 
