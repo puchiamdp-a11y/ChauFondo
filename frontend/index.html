@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChauFondo - Elimina fondos de imágenes</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- LANDING PAGE -->
+  <div data-page="landing" class="active">
+    <header>
+      <div class="container">
+        <div class="logo">ChauFondo</div>
+        <div class="header-actions">
+          <button class="btn-login" onclick="ui.showAuthModal('login')">Inicia sesión</button>
+          <button class="btn-signup" onclick="ui.showAuthModal('signup')">Registrarse</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="hero">
+      <div class="container">
+        <h1>Elimina fondos de imágenes en segundos</h1>
+        <p>100% automático. Sin descargas ni instalaciones. Gratis.</p>
+      </div>
+    </div>
+
+    <div class="container">
+      <!-- Upload State -->
+      <div id="uploadState">
+        <div class="upload-area" id="uploadArea">
+          <span class="upload-icon">↑</span>
+          <h3>Carga una imagen</h3>
+          <p>o arrastra un archivo</p>
+          <small>JPG, PNG o WEBP • Máx 25 MB</small>
+          <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp">
+        </div>
+      </div>
+
+      <!-- Processing State -->
+      <div id="processingState" class="hidden">
+        <div class="result-container">
+          <div class="spinner"></div>
+          <h3 style="text-align: center; margin-bottom: 20px;">Procesando imagen...</h3>
+          <div class="progress-bar">
+            <div class="progress-fill"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Result State -->
+      <div id="resultState" class="hidden">
+        <div class="result-container">
+          <div class="result-header">
+            <p>✓ Listo</p>
+          </div>
+          <div class="preview-box">
+            <img id="previewImage">
+          </div>
+          <div class="button-group">
+            <button class="btn-primary" onclick="ui.downloadResult()">Descargar</button>
+            <button class="btn-secondary" onclick="ui.resetUpload()">Otra imagen</button>
+          </div>
+          <div class="cta-section" data-anon-only>
+            <h3>Guarda tu historial</h3>
+            <p>Crea una cuenta para guardar tus imágenes y acceder a más funciones.</p>
+            <button class="btn-primary" onclick="ui.showAuthModal('signup')">Crear cuenta</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FEATURES SECTION -->
+    <div class="features-section">
+      <div class="container">
+        <h2>Características principales</h2>
+        <div class="features-grid">
+          <div class="feature-card">
+            <h3>100% automático</h3>
+            <p>No necesitas habilidades de edición. Nuestro algoritmo detecta automáticamente el fondo.</p>
+          </div>
+          <div class="feature-card">
+            <h3>Resultado perfecto</h3>
+            <p>Precisión de bordes incluso en cabello, pelaje y objetos transparentes.</p>
+          </div>
+          <div class="feature-card">
+            <h3>Sin instalación</h3>
+            <p>Funciona en cualquier dispositivo. No necesitas descargar nada.</p>
+          </div>
+          <div class="feature-card">
+            <h3>Gratis</h3>
+            <p>Comienza de forma gratuita sin tarjeta de crédito requerida.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer>
+      <div class="container">
+        <div class="footer-grid">
+          <div class="footer-col">
+            <h4>Producto</h4>
+            <a href="#">Características</a>
+            <a href="#">Precios</a>
+            <a href="#">API</a>
+          </div>
+          <div class="footer-col">
+            <h4>Empresa</h4>
+            <a href="#">Sobre nosotros</a>
+            <a href="#">Blog</a>
+            <a href="#">Carrera</a>
+          </div>
+          <div class="footer-col">
+            <h4>Legal</h4>
+            <a href="#">Términos</a>
+            <a href="#">Privacidad</a>
+            <a href="#">Cookies</a>
+          </div>
+          <div class="footer-col">
+            <h4>Soporte</h4>
+            <a href="#">Contacto</a>
+            <a href="#">FAQ</a>
+            <a href="#">Centro de ayuda</a>
+          </div>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>© 2025 ChauFondo. Todos los derechos reservados.</p>
+      </div>
+    </footer>
+  </div>
+
+  <!-- AUTH PAGE -->
+  <div data-page="auth">
+    <header>
+      <div class="container">
+        <div class="logo">ChauFondo</div>
+        <div class="header-actions">
+          <button class="btn-login" onclick="ui.navigateToPage('landing')">Volver</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="auth-container">
+      <div class="auth-card">
+        <h2 id="authTitle">Crea una cuenta</h2>
+
+        <form id="authForm">
+          <div class="input-group">
+            <label>Correo electrónico</label>
+            <input type="email" id="authEmail" placeholder="ejemplo@correo.com" required>
+          </div>
+
+          <div class="input-group">
+            <label>Contraseña</label>
+            <input type="password" id="authPassword" placeholder="Mínimo 8 caracteres" required>
+          </div>
+
+          <button type="submit" class="auth-button" id="authSubmitBtn">Registrarse</button>
+        </form>
+
+        <div class="auth-toggle" id="authToggle">
+          ¿Ya tienes cuenta? <a href="#" onclick="ui.toggleAuthMode(event)">Inicia sesión</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD PAGE -->
+  <div data-page="dashboard">
+    <header>
+      <div class="container">
+        <div class="logo">ChauFondo</div>
+        <div class="header-actions">
+          <span id="userEmail" style="font-size: 14px; color: #666; margin-right: 16px;"></span>
+          <button class="btn-login" onclick="ui.logout()">Cerrar sesión</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="dashboard-header">
+      <div class="container">
+        <div class="dashboard-info">
+          <div class="user-info">
+            <h2>Mi espacio
+              <span class="user-tier" id="userTier"></span>
+            </h2>
+            <div class="upload-count">
+              <strong id="uploadCount">0</strong> / <strong id="uploadLimit">50</strong> usos diarios
+            </div>
+          </div>
+          <button class="btn-primary" id="upgradeBtn" onclick="ui.showPaymentModal()" style="display: none;">Upgrade a Premium</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="container" style="padding: 40px 0;">
+      <!-- Upload State -->
+      <div id="dashboardUploadState">
+        <div class="upload-area" id="dashboardUploadArea">
+          <span class="upload-icon">↑</span>
+          <h3>Sube una imagen</h3>
+          <p>o arrastra un archivo</p>
+          <small>JPG, PNG o WEBP • Máx 25 MB</small>
+        </div>
+      </div>
+
+      <!-- Processing State -->
+      <div id="dashboardProcessingState" class="hidden">
+        <div class="result-container">
+          <div class="spinner"></div>
+          <h3 style="text-align: center; margin-bottom: 20px;">Procesando imagen...</h3>
+          <div class="progress-bar">
+            <div class="progress-fill"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Result State -->
+      <div id="dashboardResultState" class="hidden">
+        <div class="result-container">
+          <div class="result-header">
+            <p>✓ Imagen procesada y guardada</p>
+          </div>
+          <div class="preview-box">
+            <img id="dashboardPreviewImage">
+          </div>
+          <div class="button-group">
+            <button class="btn-primary" onclick="ui.downloadDashboardResult()">Descargar</button>
+            <button class="btn-secondary" onclick="ui.resetDashboardUpload()">Otra imagen</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Images Grid -->
+      <h3 style="margin-top: 60px; margin-bottom: 24px;">Mis imágenes</h3>
+      <div class="images-grid" id="imagesGrid">
+        <p style="grid-column: 1/-1; text-align: center; color: #999; padding: 40px;">
+          Aún no tienes imágenes. ¡Sube una para comenzar!
+        </p>
+      </div>
+    </div>
+
+    <!-- Dashboard upload file input -->
+    <input type="file" id="dashboardFileInput" accept="image/jpeg,image/png,image/webp" style="display: none;">
+
+    <!-- FOOTER -->
+    <footer>
+      <div class="container">
+        <div class="footer-grid">
+          <div class="footer-col">
+            <h4>Producto</h4>
+            <a href="#">Características</a>
+            <a href="#">Precios</a>
+            <a href="#">API</a>
+          </div>
+          <div class="footer-col">
+            <h4>Empresa</h4>
+            <a href="#">Sobre nosotros</a>
+            <a href="#">Blog</a>
+            <a href="#">Carrera</a>
+          </div>
+          <div class="footer-col">
+            <h4>Legal</h4>
+            <a href="#">Términos</a>
+            <a href="#">Privacidad</a>
+            <a href="#">Cookies</a>
+          </div>
+          <div class="footer-col">
+            <h4>Soporte</h4>
+            <a href="#">Contacto</a>
+            <a href="#">FAQ</a>
+            <a href="#">Centro de ayuda</a>
+          </div>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>© 2025 ChauFondo. Todos los derechos reservados.</p>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Load all JavaScript modules -->
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/upload.js"></script>
+  <script src="js/payment.js"></script>
+  <script src="js/ui.js"></script>
+  <script>
+    // Initialize app on load
+    document.addEventListener('DOMContentLoaded', async () => {
+      await ui.initialize();
+    });
+  </script>
+
+</body>
+</html>
