@@ -1,55 +1,55 @@
-# Background Removal App
+# Aplicación para Eliminar Fondos
 
-A Streamlit application that allows users to upload an image and automatically remove its background using the [rembg](https://github.com/danielgatis/rembg) library.
+Una aplicación Streamlit que permite a los usuarios subir imágenes y remover automáticamente sus fondos usando la librería [rembg](https://github.com/danielgatis/rembg).
 
-## Features
+## Características
 
-- Upload images (PNG, JPG, JPEG formats supported)
-- Automatic background removal
-- Download the processed image
-- Handles large images with automatic resizing
-- Progress indicators for better user experience
+- Subir imágenes (formatos PNG, JPG, JPEG soportados)
+- Eliminación automática de fondo
+- Descargar la imagen procesada
+- Maneja imágenes grandes con redimensionamiento automático
+- Indicadores de progreso para mejor experiencia del usuario
 
-## Getting Started
+## Comenzar
 
-### Prerequisites
+### Requisitos Previos
 
 - Python 3.8+
 - pip
 
-### Installation
+### Instalación
 
-1. Clone the repository
+1. Clonar el repositorio
 ```bash
-git clone https://github.com/tyler-simons/BackgroundRemoval.git
-cd BackgroundRemoval
+git clone https://github.com/puchiamdp-a11y/EliminaFondo.git
+cd EliminaFondo
 ```
 
-2. Create a virtual environment (optional but recommended)
+2. Crear un entorno virtual (opcional pero recomendado)
 ```bash
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate  # En Windows: venv\Scripts\activate
 ```
 
-3. Install dependencies
+3. Instalar dependencias
 ```bash
 pip install -r requirements.txt
 ```
 
-### Running the App
+### Ejecutar la Aplicación
 
 ```bash
 streamlit run bg_remove.py
 ```
 
-The app will be available at http://localhost:8501 in your web browser.
+La aplicación estará disponible en http://localhost:8501 en tu navegador web.
 
-## Usage Guidelines
+## Guía de Uso
 
-- Maximum file size: 10MB
-- Large images will be automatically resized for processing
-- Supported formats: PNG, JPG, JPEG
+- Tamaño máximo de archivo: 10MB
+- Las imágenes grandes se redimensionarán automáticamente para procesarse
+- Formatos soportados: PNG, JPG, JPEG
 
-## License
+## Licencia
 
 MIT
