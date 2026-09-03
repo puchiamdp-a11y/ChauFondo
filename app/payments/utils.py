@@ -1,5 +1,7 @@
 import requests
 import json
+import hmac
+import hashlib
 from app.core.config import settings
 
 
@@ -112,15 +114,43 @@ class MercadoPagoClient:
         except requests.RequestException as e:
             raise Exception(f"Mercado Pago API error: {str(e)}")
 
-    def verify_webhook_signature(self, payload: dict, signature: str) -> bool:
+    def verify_webhook_signature(self, payload_str: str, signature: str) -> bool:
         """
-        Verify Mercado Pago webhook signature.
+        Verify Mercado Pago webhook signature using X-Signature header.
 
-        For production, implement X-Signature verification.
-        For now, we accept all webhooks (not recommended for production).
+        Mercado Pago sends: X-Signature: ts=timestamp,v1=signature
+        We verify HMAC-SHA256(payload, secret) matches the signature.
         """
-        # TODO: Implement proper signature verification with X-Signature header
-        return True
+        if not signature or not settings.MERCADO_PAGO_SECRET:
+            return False
+
+        try:
+            # Parse signature header: "ts=timestamp,v1=signature"
+            parts = signature.split(',')
+            timestamp = None
+            received_signature = None
+
+            for part in parts:
+                if part.startswith('ts='):
+                    timestamp = part.replace('ts=', '')
+                elif part.startswith('v1='):
+                    received_signature = part.replace('v1=', '')
+
+            if not timestamp or not received_signature:
+                return False
+
+            # Calculate expected signature: HMAC-SHA256("timestamp.payload", secret)
+            message = f"{timestamp}.{payload_str}"
+            calculated_signature = hmac.new(
+                settings.MERCADO_PAGO_SECRET.encode(),
+                message.encode(),
+                hashlib.sha256
+            ).hexdigest()
+
+            # Compare signatures (constant-time comparison to prevent timing attacks)
+            return hmac.compare_digest(calculated_signature, received_signature)
+        except Exception:
+            return False
 
 
 def get_mercado_pago_amount(plan: str) -> float:

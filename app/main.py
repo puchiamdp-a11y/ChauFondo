@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.core.middleware import RequestLoggingMiddleware
 from app.auth.routes import router as auth_router
 from app.images.routes import router as images_router
 from app.payments.routes import router as payments_router
@@ -10,6 +11,9 @@ app = FastAPI(
     description="Backend for ChauFondo - Image Background Removal Service",
     version="1.0.0",
 )
+
+# Add request logging middleware (must be first)
+app.add_middleware(RequestLoggingMiddleware)
 
 origins = settings.CORS_ORIGINS.split(",")
 app.add_middleware(

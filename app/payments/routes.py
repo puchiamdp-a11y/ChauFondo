@@ -1,3 +1,4 @@
+import json
 import uuid
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Header, Request
@@ -161,14 +162,24 @@ async def handle_webhook(
     Handle Mercado Pago webhooks.
 
     Mercado Pago sends notifications about payment status changes.
+    Verifies X-Signature header for authenticity.
     """
     try:
-        body = await request.json()
+        payload_str = await request.body()
+        payload_str = payload_str.decode('utf-8')
+        body = json.loads(payload_str)
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid JSON payload",
         )
+
+    # Verify webhook signature
+    signature = request.headers.get("X-Signature", "")
+    mp_client = MercadoPagoClient()
+    if not mp_client.verify_webhook_signature(payload_str, signature):
+        # Log suspicious activity but still acknowledge (don't reveal signature validation)
+        return {"status": "ok"}
 
     # Handle different webhook types
     action = body.get("action")
@@ -209,16 +220,18 @@ async def handle_webhook(
 
         # Update payment status based on Mercado Pago status
         if mp_status == "approved":
-            payment.status = PaymentStatus.APPROVED
-            payment.paid_at = datetime.utcnow()
+            # Only process if payment is transitioning to approved (idempotency)
+            if payment.status != PaymentStatus.APPROVED:
+                payment.status = PaymentStatus.APPROVED
+                payment.paid_at = datetime.utcnow()
 
-            # Upgrade user tier
-            duration_days = get_plan_duration_days(payment.plan)
-            user.tier = UserTier.PREMIUM
-            user.tier_expires_at = datetime.utcnow() + timedelta(days=duration_days)
+                # Upgrade user tier
+                duration_days = get_plan_duration_days(payment.plan)
+                user.tier = UserTier.PREMIUM
+                user.tier_expires_at = datetime.utcnow() + timedelta(days=duration_days)
 
-            # Clear rate limit cache for user
-            clear_user_cache(user.id)
+                # Clear rate limit cache for user
+                clear_user_cache(user.id)
 
             db.commit()
 

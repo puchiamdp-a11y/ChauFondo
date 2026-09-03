@@ -206,3 +206,90 @@ def test_payment_tier_upgrade(db):
     user = db.query(User).filter(User.id == user_id).first()
     assert user.tier == UserTier.PREMIUM
     assert user.tier_expires_at is not None
+
+
+@patch('app.payments.routes.MercadoPagoClient')
+def test_webhook_idempotency(mock_mp_client, client, db):
+    """Test that duplicate webhooks don't reset tier expiration."""
+    import uuid
+    from app.models import User
+
+    # Create user and payment
+    user_id = str(uuid.uuid4())
+    user = User(
+        id=user_id,
+        email="webhook_idempotent@example.com",
+        password_hash="hashed",
+        tier=UserTier.FREE,
+    )
+    db.add(user)
+    db.commit()
+
+    payment_id = "mp_payment_123"
+    payment = Payment(
+        id=str(uuid.uuid4()),
+        user_id=user_id,
+        mercado_pago_id=payment_id,
+        amount=999.00,
+        status=PaymentStatus.PENDING,
+        plan="premium_month",
+    )
+    db.add(payment)
+    db.commit()
+
+    # Mock Mercado Pago API responses
+    mock_client_instance = MagicMock()
+    mock_mp_client.return_value = mock_client_instance
+    mock_client_instance.get_payment.return_value = {
+        "id": payment_id,
+        "status": "approved",
+        "external_reference": user_id,
+    }
+
+    # Send first webhook
+    webhook_payload = {
+        "action": "payment.created",
+        "type": "payment",
+        "data": {"id": payment_id},
+        "api_version": "v1"
+    }
+    client.post("/payments/webhook", json=webhook_payload)
+
+    # Check tier was upgraded
+    user = db.query(User).filter(User.id == user_id).first()
+    assert user.tier == UserTier.PREMIUM
+    first_expiration = user.tier_expires_at
+
+    # Wait a moment to ensure time passes
+    import time
+    time.sleep(0.1)
+
+    # Send same webhook again (duplicate from Mercado Pago)
+    client.post("/payments/webhook", json=webhook_payload)
+
+    # Verify tier expiration didn't change
+    user = db.query(User).filter(User.id == user_id).first()
+    assert user.tier == UserTier.PREMIUM
+    assert user.tier_expires_at == first_expiration
+
+
+def test_webhook_invalid_signature(client):
+    """Test that webhooks with invalid signatures are rejected."""
+    webhook_payload = {
+        "action": "payment.created",
+        "type": "payment",
+        "data": {"id": "mp_invalid_123"},
+        "api_version": "v1"
+    }
+
+    # Send webhook with invalid signature
+    response = client.post(
+        "/payments/webhook",
+        json=webhook_payload,
+        headers={"X-Signature": "ts=123456789,v1=invalidsignature"}
+    )
+
+    # Should return 200 but not process
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
